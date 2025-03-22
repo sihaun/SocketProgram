@@ -3,7 +3,7 @@ import json
 import sys
 import time
 
-SERVER_IP = "172.30.1.17"
+SERVER_IP = "000.000.0.0"
 DNS = {
     "server": SERVER_IP,
     }
