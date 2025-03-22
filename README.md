@@ -15,11 +15,12 @@ login(POST) : -> login_handler
     is_logined = True
 
 privilege_handler
-권한 확인(HEAD). 다운로드 가능한 상태인지.
 권한 상승 요청(PUT). 로그인 되어있어야 함. 상승할 수 있는 권한이어야 함. -> key 발급, 쿠키에 저장.
 
 image_handler
+이미지 존재하는지 요청(HEAD)
 이미지 보여주기 요청(GET). 로그인 되어있어야 함. -> 이미지는 웹 캐시에 저장.
 
 file_handler
+파일 존재하는지 요청(HEAD)
 파일 다운로드 요청(GET). 로그인 되어있어야 함. key가 맞아야 함.

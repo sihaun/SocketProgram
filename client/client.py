@@ -1,8 +1,9 @@
 import socket
 import json
 import sys
+import time
 
-SERVER_IP = "000.000.0.7"
+SERVER_IP = "172.30.1.17"
 DNS = {
     "server": SERVER_IP,
     }
@@ -12,8 +13,10 @@ class Client(socket.socket):
         socket.socket.__init__(self, socket.AF_INET, socket.SOCK_STREAM)
         self.host = self.domain_to_ip(host)
         self.port = port
-        self.session_cookie = None
+        self.session_cookie = {"key" : {"value" : None, "expiry_time" : 0},
+                               "key1" : {"value" : 1, "expiry_time" : 0}}
         self.is_logined = False
+        self.id = None
 
         try:
             self.connect((self.host, self.port))
@@ -29,6 +32,18 @@ class Client(socket.socket):
         """ HTTP 응답을 생성하는 함수 """
         response = [f"{method} {url} HTTP/1.1"]
         response.append(f"Host: {self.host}")
+
+        cookies = []
+        for cookie in list(self.session_cookie.keys()):
+            if time.time() < self.session_cookie[cookie]["expiry_time"]: # 기간 안지났으면
+                cookies.append(f"{cookie}={self.session_cookie[cookie]["value"]}") # 쿠키 추가
+            else :
+                del self.session_cookie[cookie]
+        cookies = "; ".join(cookies)
+        if cookies:
+            headers_cookie = "Set-Cookie: " + cookies
+            response.append(headers_cookie)
+
         if headers:
             response.extend(headers)
         
@@ -43,6 +58,7 @@ class Client(socket.socket):
         except Exception as e:
             print("write() error:", e)
 
+    def _response_handler(self):
         try:
             _response = self.recv(1024).decode()
         except Exception as e:
@@ -52,9 +68,9 @@ class Client(socket.socket):
         if "Set-Cookie" in _response:
             for line in _response.split("\r\n"):
                 if line.startswith("Set-Cookie:"):
-                    self.session_cookie = line.split(": ")[1]
-                    break
-
+                    name, max_age = line.split(": ")[1].split("; ")
+                    self.session_cookie[name.split("=")[0]] = {"value" : name.split("=")[1], "expiry_time" : time.time() + int(max_age.split("=")[1])}
+                    
         return _response
     
     def _is_domain(self, host : str) -> bool:
@@ -87,7 +103,8 @@ class Client(socket.socket):
     def register(self, username : str, password : str):
         data = json.dumps({"username": username, "password": password})
         request = self._create_request("POST", "/register", data, headers="Content-Type: application/json")
-        response = self._send_request(request)
+        self._send_request(request)
+        response = self._response_handler()
         print(response)
 
         if "REGISTER_SUCCESS" in response:
@@ -99,24 +116,37 @@ class Client(socket.socket):
     def login(self, username : str, password : str):
         data = json.dumps({"username": username, "password": password})
         request = self._create_request("POST", "/login", data, headers="Content-Type: application/json")
-        response = self._send_request(request)
+        self._send_request(request)
+        response = self._response_handler()
         print(response)
         print(f"Saved Cookie: {self.session_cookie}")
 
         if "LOGIN_SUCCESS" in response:
             self.is_logined = True
+            self.id = username
             print(f"로그인 성공: {username}")
         elif "LOGIN_FAILED" in response:
             print(f"로그인 실패: {username}")
 
+    def upgrade_privilege(self):
+        data = json.dumps({"username": self.id})
+        request = self._create_request("PUT", "/privilege", data, headers="Content-Type: application/json")
+        self._send_request(request)
+        response = self._response_handler()
+        print(response)
+
+        # 타임스탬프를 로컬 시간으로 변환
+        local_time = time.localtime(self.session_cookie["key"]["expiry_time"])
+        # 로컬 시간을 문자열로 출력
+        formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
+        if "PRIVILEGE_CHANGED" in response:
+            print(f"권한 부여됨 expiry_time : {formatted_time}")
+        elif "PRIVILEGE_ALREADY_CHANGED" in response:
+            print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
+
     # 쿠키 확인 요청
     def check_cookie(self):
-        if self.session_cookie:
-            request = f"GET /check_cookie HTTP/1.1\r\nHost: {self.host}\r\nCookie: {self.session_cookie}\r\n\r\n"
-        else:
-            request = f"GET /check_cookie HTTP/1.1\r\nHost: {self.host}\r\n\r\n"
-
-        print(self._send_request(request))
+        pass
 
 def main(host : str, port : int):
     client = Client(host, port)
@@ -126,8 +156,7 @@ def main(host : str, port : int):
         print("1. 회원가입 (POST /register)")
         print("2. 로그인 (POST /login)")
         if client.is_logined:
-            print("3. 권한 확인 (GET /)")
-            print("4. 권한 상승 요청 (GET /)")
+            print("3. 권한 상승 요청 (PUT /)")
             print("5. 이미지 보기 (GET /)")
             print("6. 파일 다운로드 (GET /)")
         print("99. 종료")
@@ -146,11 +175,11 @@ def main(host : str, port : int):
             client.login(user_id, password)
 
         elif client.is_logined and user_input == "3":
-            # 권한 확인
-            pass
+            # 권한 상승 요청 
+            client.upgrade_privilege()
 
         elif client.is_logined and user_input == "4":
-            # 권한 상승 요청
+            # 
             pass
 
         elif client.is_logined and user_input == "5":
