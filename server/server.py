@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+import threading
 
 USER_DB = "users.json"
 SESSION_DB = {}  # 쿠키 저장용
@@ -14,6 +15,8 @@ class Server(socket.socket):
         self.listen(3)
         print(f"Server started at {port}")
 
+        self.lock_user_db = threading.Lock()
+
         self.default_key = "0"
 
     def __exit__(self):
@@ -21,14 +24,34 @@ class Server(socket.socket):
         self.close()
 
     def load_users(self):
-        if not os.path.exists(USER_DB):
-            return {} # 나중에 파일이 없을 때 파일 추가
-        with open(USER_DB, "r") as file:
-            return json.load(file)
+        with self.lock_user_db:
+            if not os.path.exists(USER_DB):
+                return {} # 나중에 파일이 없을 때 파일 추가
+            with open(USER_DB, "r") as file:
+                return json.load(file)
 
     def save_users(self, users):
-        with open(USER_DB, "w") as file:
-            json.dump(users, file, indent=4)
+        with self.lock_user_db:
+            with open(USER_DB, "w") as file:
+                json.dump(users, file, indent=4)
+
+    def client_handler(self, client_socket : socket.socket, addr):
+        print(f"[{addr[0]}] is accept.")
+        while True:
+            try:
+                request = client_socket.recv(1024).decode()  # 클라이언트로부터 데이터 수신
+                if not request:
+                    break  # 클라이언트가 연결을 종료하면 루프 종료
+
+                response = self.request_handler(request)
+                client_socket.sendall(response.encode())
+
+            except ConnectionResetError:
+                print(f"[{addr[0]}] 연결이 강제 종료되었습니다.")
+                break
+
+        print(f"[{addr[0]}] 연결 종료.")
+        client_socket.close()
 
     def _create_response(self, status, body, headers=None):
         """ HTTP 응답을 생성하는 함수 """
@@ -90,9 +113,9 @@ class Server(socket.socket):
         return self._create_response("401 Unauthorized", "No valid session")
 
     def request_handler(self, request):
+        print(request)
         lines = request.split("\r\n")
         method, path, _ = lines[0].split(" ")
-
         headers = lines[1:]
         body = lines[-1]
 
@@ -101,11 +124,12 @@ class Server(socket.socket):
             return self.register_handler(data["username"], data["password"])
         
         elif method == "POST" and path == "/login": # login
+            print("wwwzz")
             data = json.loads(body)
             return self.login_handler(data["username"], data["password"])
         
         elif method == "PUT" and path == "/privilege": # check_privilege
-            dara = json.loads(body)
+            data = json.loads(body)
             return self.privilege_handler(data["username"])
         
         elif path == "/image": # image
@@ -127,12 +151,9 @@ def main(port):
     server = Server(port)
 
     while True:
-        conn, addr = server.accept()
-        print((f"[{addr[0]}]is accept."))
-        request = conn.recv(1024).decode()
-
-        response = server.request_handler(request)
-        conn.sendall(response.encode())
+        client_socket, addr = server.accept()
+        threading_client_handler = threading.Thread(target=server.client_handler, args=(client_socket, addr))
+        threading_client_handler.start()
 
 
 if __name__ == "__main__":

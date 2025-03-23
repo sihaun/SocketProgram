@@ -60,7 +60,9 @@ class Client(socket.socket):
 
     def _response_handler(self):
         try:
-            _response = self.recv(1024).decode()
+            print("전엔 댐댐")
+            _response = self.recv(4096).decode()
+            print(f"_response : {_response}")
         except Exception as e:
             print("read() error:", e)
 
@@ -102,7 +104,7 @@ class Client(socket.socket):
     # 회원가입 요청
     def register(self, username : str, password : str):
         data = json.dumps({"username": username, "password": password})
-        request = self._create_request("POST", "/register", data, headers="Content-Type: application/json")
+        request = self._create_request("POST", "/register", data, headers=["Content-Type: application/json"])
         self._send_request(request)
         response = self._response_handler()
         print(response)
@@ -115,7 +117,8 @@ class Client(socket.socket):
     # 로그인 요청 (쿠키 저장됨)
     def login(self, username : str, password : str):
         data = json.dumps({"username": username, "password": password})
-        request = self._create_request("POST", "/login", data, headers="Content-Type: application/json")
+        request = self._create_request("POST", "/login", data, headers=["Content-Type: application/json"])
+        print(f"request : {request}")
         self._send_request(request)
         response = self._response_handler()
         print(response)
