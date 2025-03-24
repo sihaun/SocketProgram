@@ -53,15 +53,15 @@ class Server(socket.socket):
         print(f"[{addr[0]}] 연결 종료.")
         client_socket.close()
 
-    def _create_response(self, status, body, headers=None):
+    def _create_response(self, status, body=None, headers=None):
         """ HTTP 응답을 생성하는 함수 """
         response = [f"HTTP/1.1 {status}"]
         if headers:
             response.extend(headers)
-        
-        response.append(f"Content-Length: {len(body.encode())}")  # 본문 길이 추가
-        response.append("")  # 헤더 종료
-        response.append(body)  # 본문 추가
+        if body:
+            response.append(f"Content-Length: {len(body.encode())}")  # 본문 길이 추가
+            response.append("")  # 헤더 종료
+            response.append(body)  # 본문 추가
         return "\r\n".join(response)
 
     def register_handler(self, id, password):
@@ -84,33 +84,23 @@ class Server(socket.socket):
 
         return self._create_response("401 Unauthorized", "LOGIN_FAILED")
     
-    def privilege_handler(self, id):
-        users = self.load_users()
-        if users.get(id)["key"]["value"] == self.default_key or time.time() > users.get(id)["key"]["expiry_time"]:
-            users.get(id)["key"]["value"] = "ABCD"
-            users.get(id)["key"]["expiry_time"] = time.time() + 3600
+    def privilege_handler(self, valid=True, check=True):
+        users = self.load_users()  
 
-            headers = [f"Set-Cookie: key=ABCD; Max-Age=3600"]
-            return self._create_response("200 OK", "PRIVILEGE_CHANGED", headers)
+        if check:
+            if valid:
+                return self._create_response("200 OK")
+            return self._create_response("401 Unauthorized")
         
-        return self._create_response("409 Conflict", "PRIVILEGE_ALREADY_CHANGED") # 이미 권한 부여됨
+        if valid:
+            return self._create_response("409 Conflict", "PRIVILEGE_ALREADY_CHANGED")
+        
+        users.get(id)["key"]["value"] = "ABCD"
+        users.get(id)["key"]["expiry_time"] = time.time() + 3600
+        self.save_users(users)
 
-    def handle_check_cookie(self, headers):
-        cookie_header = next((h for h in headers if h.startswith("Cookie:")), None)
-        
-        if cookie_header:
-            cookies = {}
-            for c in cookie_header.replace("Cookie: ", "").split("; "):
-                if "=" in c:  # '=' 기호가 있는 경우만 처리
-                    key, value = c.split("=", 1)
-                    cookies[key] = value
-            
-            session_id = cookies.get("session_id")
-            
-            if session_id in SESSION_DB:
-                return self._create_response("200 OK", f"Valid session for {SESSION_DB[session_id]}")
-        
-        return self._create_response("401 Unauthorized", "No valid session")
+        headers = [f"Set-Cookie: key=ABCD; Max-Age=3600"]
+        return self._create_response("200 OK", "PRIVILEGE_CHANGED", headers)
 
     def request_handler(self, request):
         print(request)
@@ -124,13 +114,15 @@ class Server(socket.socket):
             return self.register_handler(data["username"], data["password"])
         
         elif method == "POST" and path == "/login": # login
-            print("wwwzz")
             data = json.loads(body)
             return self.login_handler(data["username"], data["password"])
         
-        elif method == "PUT" and path == "/privilege": # check_privilege
+        elif path == "/privilege": # privilege
             data = json.loads(body)
-            return self.privilege_handler(data["username"])
+            id = data["username"]
+            is_valid = self._is_valid_key(id)
+
+            return self.privilege_handler(is_valid) if method == "HEAD" else self.privilege_handler(is_valid, check=False)
         
         elif path == "/image": # image
             if method == "HEAD": # 이미지 존재 요청
@@ -141,11 +133,17 @@ class Server(socket.socket):
             if method == "HEAD": # 파일 존재 요청
                 pass
                     # 파일 다운로드 요청
-
-        elif method == "GET" and path == "/check_cookie": # check_cookie
-            return self.handle_check_cookie(headers)
         
         return self._create_response("404 Not Found", "Page not found")
+    
+    def _is_valid_key(self, id):
+        users = self.load_users()
+        key = users.get(id)["key"]
+
+        if key["value"] == self.default_key or time.time() > key["expiry_time"]: # Invalid
+            return False
+        
+        return True
 
 def main(port):
     server = Server(port)

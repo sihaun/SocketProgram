@@ -60,9 +60,8 @@ class Client(socket.socket):
 
     def _response_handler(self):
         try:
-            print("전엔 댐댐")
             _response = self.recv(4096).decode()
-            print(f"_response : {_response}")
+            print(f"_response : \n{_response}")
         except Exception as e:
             print("read() error:", e)
 
@@ -118,7 +117,6 @@ class Client(socket.socket):
     def login(self, username : str, password : str):
         data = json.dumps({"username": username, "password": password})
         request = self._create_request("POST", "/login", data, headers=["Content-Type: application/json"])
-        print(f"request : {request}")
         self._send_request(request)
         response = self._response_handler()
         print(response)
@@ -133,7 +131,7 @@ class Client(socket.socket):
 
     def upgrade_privilege(self):
         data = json.dumps({"username": self.id})
-        request = self._create_request("PUT", "/privilege", data, headers="Content-Type: application/json")
+        request = self._create_request("PUT", "/privilege", data, headers=["Content-Type: application/json"])
         self._send_request(request)
         response = self._response_handler()
         print(response)
@@ -144,34 +142,33 @@ class Client(socket.socket):
         formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
         if "PRIVILEGE_CHANGED" in response:
             print(f"권한 부여됨 expiry_time : {formatted_time}")
+            print(f"Saved Cookie: {self.session_cookie}\n")
         elif "PRIVILEGE_ALREADY_CHANGED" in response:
             print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
 
-    # 쿠키 확인 요청
-    def check_cookie(self):
-        pass
 
 def main(host : str, port : int):
     client = Client(host, port)
 
     while True:
         print("사용할 서비스를 선택하세요:")
-        print("1. 회원가입 (POST /register)")
-        print("2. 로그인 (POST /login)")
-        if client.is_logined:
+        if not client.is_logined:
+            print("1. 회원가입 (POST /register)")
+            print("2. 로그인 (POST /login)")
+        else:
             print("3. 권한 상승 요청 (PUT /)")
-            print("5. 이미지 보기 (GET /)")
-            print("6. 파일 다운로드 (GET /)")
+            print("5. 이미지 다운로드 (GET /)")
+            print("5. 파일 다운로드 (GET /)")
         print("99. 종료")
         user_input = input("> ")
         
-        if user_input == "1":
+        if not client.is_logined and user_input == "1":
             # 회원가입 요청
             user_id = input("아이디를 입력하세요: ")
             password = input("비밀번호를 입력하세요: ")
             client.register(user_id, password)
 
-        elif user_input == "2":
+        elif not client.is_logined and user_input == "2":
             # 로그인 요청
             user_id = input("아이디를 입력하세요: ")
             password = input("비밀번호를 입력하세요: ")
@@ -182,7 +179,7 @@ def main(host : str, port : int):
             client.upgrade_privilege()
 
         elif client.is_logined and user_input == "4":
-            # 
+            # 이미지 보기
             pass
 
         elif client.is_logined and user_input == "5":
