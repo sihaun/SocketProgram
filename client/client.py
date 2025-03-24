@@ -2,8 +2,10 @@ import socket
 import json
 import sys
 import time
+import os
 
 SERVER_IP = "000.000.0.0"
+COOKIES_DB = "cookies.json"
 DNS = {
     "server": SERVER_IP,
     }
@@ -13,8 +15,8 @@ class Client(socket.socket):
         socket.socket.__init__(self, socket.AF_INET, socket.SOCK_STREAM)
         self.host = self.domain_to_ip(host)
         self.port = port
-        self.session_cookie = {"key" : {"value" : None, "expiry_time" : 0},
-                               "key1" : {"value" : 1, "expiry_time" : 0}}
+
+        self.session_cookie = None
         self.is_logined = False
         self.id = None
 
@@ -23,12 +25,26 @@ class Client(socket.socket):
         except Exception as e:
             print("connect() error:", e)
             sys.exit(1)
+
+        self.load_cookies()
+
+    def load_cookies(self) -> None:
+        try:
+            with open(COOKIES_DB, "r") as file:
+                self.session_cookie = json.load(file)
+        except:
+            self.session_cookie = {}
+
+    def save_cookies(self, cookies : dict) -> None:
+            with open(COOKIES_DB, "w") as file:
+                json.dump(cookies, file, indent=4)
     
     def __exit__(self):
+        self.save_cookies(self.session_cookie)
         print("Client closed")
         self.close()
 
-    def _create_request(self, method, url, body, headers=None):
+    def _create_request(self, method : str, url : str, headers : list=None, body : str=None) -> str:
         """ HTTP 응답을 생성하는 함수 """
         response = [f"{method} {url} HTTP/1.1"]
         response.append(f"Host: {self.host}")
@@ -46,10 +62,13 @@ class Client(socket.socket):
 
         if headers:
             response.extend(headers)
-        
-        response.append(f"Content-Length: {len(body.encode())}")  # 본문 길이 추가
-        response.append("")  # 헤더 종료
-        response.append(body)  # 본문 추가
+
+        if body:
+            response.append(f"Content-Length: {len(body.encode())}")  # 본문 길이 추가
+            response.append("")  # 헤더 종료
+
+            response.append(body)  # 본문 추가
+
         return "\r\n".join(response)
 
     def _send_request(self, request : str) -> str:
@@ -58,10 +77,17 @@ class Client(socket.socket):
         except Exception as e:
             print("write() error:", e)
 
-    def _response_handler(self):
+    def _response_handler(self, bin_data=False) -> str:
         try:
-            _response = self.recv(4096).decode()
-            print(f"_response : \n{_response}")
+            if not bin_data:
+                _response = self.recv(4096).decode()
+                print(f"_response : \n{_response}")
+            else:
+                _b_response = self.recv(4096)
+                header, image_data = _b_response.split(b"\r\n\r\n", 1)
+
+                return header, image_data
+
         except Exception as e:
             print("read() error:", e)
 
@@ -101,9 +127,9 @@ class Client(socket.socket):
             return host
 
     # 회원가입 요청
-    def register(self, username : str, password : str):
+    def register(self, username : str, password : str) -> None:
         data = json.dumps({"username": username, "password": password})
-        request = self._create_request("POST", "/register", data, headers=["Content-Type: application/json"])
+        request = self._create_request("POST", "/register", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
         response = self._response_handler()
         print(response)
@@ -114,9 +140,9 @@ class Client(socket.socket):
             print(f"이미 가입한 유저가 존재합니다. 다른 id를 사용해주세요: {username}")
 
     # 로그인 요청 (쿠키 저장됨)
-    def login(self, username : str, password : str):
+    def login(self, username : str, password : str) -> None:
         data = json.dumps({"username": username, "password": password})
-        request = self._create_request("POST", "/login", data, headers=["Content-Type: application/json"])
+        request = self._create_request("POST", "/login", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
         response = self._response_handler()
         print(response)
@@ -129,9 +155,9 @@ class Client(socket.socket):
         elif "LOGIN_FAILED" in response:
             print(f"로그인 실패: {username}")
 
-    def upgrade_privilege(self):
+    def upgrade_privilege(self) -> None:
         data = json.dumps({"username": self.id})
-        request = self._create_request("PUT", "/privilege", data, headers=["Content-Type: application/json"])
+        request = self._create_request("PUT", "/privilege", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
         response = self._response_handler()
         print(response)
@@ -145,6 +171,33 @@ class Client(socket.socket):
             print(f"Saved Cookie: {self.session_cookie}\n")
         elif "PRIVILEGE_ALREADY_CHANGED" in response:
             print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
+
+    def download_image(self, url : str) -> None:
+        data = json.dumps({"username": self.id})
+        check_privilege = self._create_request("HEAD", "/images", headers=["Content-Type: application/json"], body=data)
+        self._send_request(check_privilege)
+        privilege_response = self._response_handler()
+        print(privilege_response)
+
+        if "401 Unauthorized" in privilege_response:
+            print("권한이 없습니다. 권한을 상승시켜 주세요.")
+            return
+        
+        # 200 OK
+        request = self._create_request("GET", headers=["Content-Type: application/str"], body=url)
+        self._send_request(request)
+        headers, image_data = self._response_handler()
+        print(headers)
+
+        if "200 OK" in headers:
+            with open(url, "wb") as f:
+                f.write(image_data)
+                print(f"[+] 이미지 저장 완료: {url}")
+
+        elif "Image not found" in headers:
+            print(f"이미지가 존재하지 않습니다. Image : {url}")
+
+
 
 
 def main(host : str, port : int):
@@ -179,8 +232,8 @@ def main(host : str, port : int):
             client.upgrade_privilege()
 
         elif client.is_logined and user_input == "4":
-            # 이미지 보기
-            pass
+            url = input("다운받을 이미지 이름을 입력하세요: ")
+            client.download_image(url)
 
         elif client.is_logined and user_input == "5":
             # 이미지 보기
