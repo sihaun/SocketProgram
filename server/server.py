@@ -43,8 +43,9 @@ class Server(socket.socket):
                 if not request:
                     break  # 클라이언트가 연결을 종료하면 루프 종료
 
-                response, bin_file = self.request_handler(request)
-                if bin_file:
+                (response, bin_file) = self.request_handler(request)
+                if bin_file is not None:
+                    print("bin_file is not None")
                     client_socket.sendall(response.encode() + bin_file)
                 else: 
                     client_socket.sendall(response.encode())
@@ -87,7 +88,7 @@ class Server(socket.socket):
 
         return self._create_response("401 Unauthorized", body="LOGIN_FAILED")
     
-    def privilege_handler(self, key_is_valid : bool=True, check : bool=True) -> None:
+    def privilege_handler(self, id : dict, key_is_valid : bool=True, check : bool=True) -> str:
         users = self.load_users()  
 
         if check:
@@ -109,9 +110,8 @@ class Server(socket.socket):
         if os.path.exists(url):
             with open(url, "rb") as f:
                 image_data = f.read()
-            return self._create_response("200 OK", headers=[f"Content-Type: image/jpeg", "Content-Disposition: attachment", "filename={url}"]), image_data
-        
-        return self._create_response("404 Not Found", "Image not found")
+            return (self._create_response("200 OK", headers=[f"Content-Type: image/jpeg", "Content-Disposition: attachment", "filename={url}"]), image_data)
+        return (self._create_response("404 Not Found", body="Image not found"), None)
 
 
     def request_handler(self, request : str) -> tuple:
@@ -134,28 +134,25 @@ class Server(socket.socket):
             id = data["username"]
             valid = self._is_valid_key(id)
 
-            return self.privilege_handler(valid), None if method == "HEAD" else self.privilege_handler(valid, check=False), None
+            return (self.privilege_handler(id, valid, check=False), None)
         
-        elif path == "/image": # image
+        elif path == "/images": # image
             if method == "HEAD":
                 data = json.loads(body)
                 id = data["username"]
                 valid = self._is_valid_key(id)
-                return self._create_response("200 OK"), None if valid else self._create_response("401 Unauthorized"), None # check key
+                return (self._create_response("200 OK"), None) if valid else (self._create_response("401 Unauthorized"), None) # check key
             
-            return self.image_downloader(body)
-            if os.path.exists(IMAGE_PATH):
-                with open(IMAGE_PATH, "rb") as f:
-                    image_data = f.read()
-
-            retur
+            url_data = json.loads(body)
+            url = url_data["url"]
+            return self.image_downloader(url)
 
         elif method == "HEAD" and path == "/file": # file
             if method == "HEAD": # 파일 존재 요청
                 pass
                     # 파일 다운로드 요청
         
-        return self._create_response("404 Not Found", "Page not found"), None
+        return self._create_response("404 Not Found", body="Page not found"), None
     
     def _is_valid_key(self, id : str) -> bool:
         users = self.load_users()

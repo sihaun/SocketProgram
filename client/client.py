@@ -78,15 +78,17 @@ class Client(socket.socket):
             print("write() error:", e)
 
     def _response_handler(self, bin_data=False) -> str:
+        _response = ""
         try:
             if not bin_data:
                 _response = self.recv(4096).decode()
                 print(f"_response : \n{_response}")
             else:
                 _b_response = self.recv(4096)
-                header, image_data = _b_response.split(b"\r\n\r\n", 1)
+                (header, image_data) = _b_response.split(b"\r\n\r\n", 1)
+                print("header.decode() :", header.decode())
 
-                return header, image_data
+                return (header.decode(), image_data)
 
         except Exception as e:
             print("read() error:", e)
@@ -184,10 +186,13 @@ class Client(socket.socket):
             return
         
         # 200 OK
-        request = self._create_request("GET", headers=["Content-Type: application/str"], body=url)
+        url_data = json.dumps({"url": url})
+        print(f"{url_data}")
+        request = self._create_request("GET", "/images", headers=["Content-Type: application/json"], body=url_data)
         self._send_request(request)
-        headers, image_data = self._response_handler()
-        print(headers)
+        (headers, image_data) = self._response_handler(bin_data=True)
+        headers = headers.decode()
+        print("headers :\n", headers)
 
         if "200 OK" in headers:
             with open(url, "wb") as f:
@@ -210,7 +215,7 @@ def main(host : str, port : int):
             print("2. 로그인 (POST /login)")
         else:
             print("3. 권한 상승 요청 (PUT /)")
-            print("5. 이미지 다운로드 (GET /)")
+            print("4. 이미지 다운로드 (GET /)")
             print("5. 파일 다운로드 (GET /)")
         print("99. 종료")
         user_input = input("> ")
