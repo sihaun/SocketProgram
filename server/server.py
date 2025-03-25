@@ -19,7 +19,10 @@ class Server(socket.socket):
 
         self.default_key = "0"
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
+        # exc_type, exc_value, traceback는 예외 관련 정보입니다.
+        if exc_type:
+            print(f"An exception occurred: {exc_value}")
         print("Server closed")
         self.close()
 
@@ -88,13 +91,15 @@ class Server(socket.socket):
 
     def login_handler(self, id : str, password : str) -> tuple:
         users = self.load_users()
-        if users.get(id)["pw"] == password:
-            session_id = f"{id}"
-            SESSION_DB[session_id] = id  # 세션 저장
+        try:
+            if users.get(id)["pw"] == password:
+                session_id = f"{id}"
+                SESSION_DB[session_id] = id  # 세션 저장
 
-            headers = [f"Set-Cookie: session_id={session_id}; Max-Age=3600"]
-            return self._create_response_str("200 OK", headers, body="LOGIN_SUCCESS")
-
+                headers = [f"Set-Cookie: session_id={session_id}; Max-Age=3600"]
+                return self._create_response_str("200 OK", headers, body="LOGIN_SUCCESS")
+        except:
+            pass
         return self._create_response_str("401 Unauthorized", body="LOGIN_FAILED")
     
     def privilege_handler(self, id : dict, key_is_valid : bool=True, check : bool=True) -> tuple:
@@ -172,12 +177,11 @@ class Server(socket.socket):
         return True
 
 def main(port):
-    server = Server(port)
-
-    while True:
-        client_socket, addr = server.accept()
-        threading_client_handler = threading.Thread(target=server.client_handler, args=(client_socket, addr))
-        threading_client_handler.start()
+    with Server(port) as server:
+        while True:
+            client_socket, addr = server.accept()
+            threading_client_handler = threading.Thread(target=server.client_handler, args=(client_socket, addr))
+            threading_client_handler.start()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@ import socket
 import json
 import sys
 import time
+from PIL import Image
+from io import BytesIO
 import os
 
 SERVER_IP = "000.000.0.0"
@@ -26,8 +28,6 @@ class Client(socket.socket):
             print("connect() error:", e)
             sys.exit(1)
 
-        self.load_cookies()
-
     def load_cookies(self) -> None:
         try:
             with open(COOKIES_DB, "r") as file:
@@ -39,10 +39,14 @@ class Client(socket.socket):
             with open(COOKIES_DB, "w") as file:
                 json.dump(cookies, file, indent=4)
     
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
+        # exc_type, exc_value, traceback는 예외 관련 정보입니다.
+        if exc_type:
+            print(f"An exception occurred: {exc_value}")
         self.save_cookies(self.session_cookie)
         print("Client closed")
         self.close()
+        return False  # 예외를 전파하고 싶다면 False를 반환
 
     def _create_request(self, method : str, url : str, headers : list=None, body : str=None) -> str:
         """ HTTP 응답을 생성하는 함수 """
@@ -105,7 +109,6 @@ class Client(socket.socket):
 
             return (header.decode(), image_data)
 
-
         # Set-Cookie 처리 (쿠키 저장)
         if "Set-Cookie" in _response:
             for line in _response.split("\r\n"):
@@ -150,6 +153,7 @@ class Client(socket.socket):
         print(response)
 
         if "REGISTER_SUCCESS" in response:
+            self.load_cookies()
             print(f"회원가입 성공: {username}")
         elif "User already exists" in response:
             print(f"이미 가입한 유저가 존재합니다. 다른 id를 사용해주세요: {username}")
@@ -187,7 +191,7 @@ class Client(socket.socket):
         elif "PRIVILEGE_ALREADY_CHANGED" in response:
             print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
 
-    def download_image(self, url : str) -> None:
+    def show_image(self, url : str) -> None:
         data = json.dumps({"username": self.id})
         check_privilege = self._create_request("HEAD", "/images", headers=["Content-Type: application/json"], body=data)
         self._send_request(check_privilege)
@@ -201,72 +205,75 @@ class Client(socket.socket):
         # 200 OK
         url_data = json.dumps({"url": url})
         print(f"{url_data}")
+
+        if os.path.exists("web_cash/" + url_data): # web_cash
+            image = Image.open("web_cash/" + url_data)
+            return
+        
         request = self._create_request("GET", "/images", headers=["Content-Type: image/jpg"], body=url_data)
         self._send_request(request)
         (headers, image_data) = self._response_handler(bin_data=True)
 
         if "200 OK" in headers:
-            with open(url, "wb") as f:
-                f.write(image_data)
-                print(f"[+] 이미지 저장 완료: {url}")
+            image = Image.open(BytesIO(image_data))
+            image.show()
+            image.save("web_cash/downloaded_image.jpg")
 
         elif "Image not found" in headers:
             print(f"이미지가 존재하지 않습니다. Image : {url}")
 
 
-
-
-
 def main(host : str, port : int):
-    client = Client(host, port)
 
-    while True:
-        print("사용할 서비스를 선택하세요:")
-        if not client.is_logined:
-            print("1. 회원가입 (POST /register)")
-            print("2. 로그인 (POST /login)")
-        else:
-            print("3. 권한 상승 요청 (PUT /)")
-            print("4. 이미지 다운로드 (GET /)")
-            print("5. 파일 다운로드 (GET /)")
-        print("99. 종료")
-        user_input = input("> ")
-        
-        if not client.is_logined and user_input == "1":
-            # 회원가입 요청
-            user_id = input("아이디를 입력하세요: ")
-            password = input("비밀번호를 입력하세요: ")
-            client.register(user_id, password)
+    with Client(host, port) as client:
 
-        elif not client.is_logined and user_input == "2":
-            # 로그인 요청
-            user_id = input("아이디를 입력하세요: ")
-            password = input("비밀번호를 입력하세요: ")
-            client.login(user_id, password)
+        while True:
+            print("사용할 서비스를 선택하세요:")
+            if not client.is_logined:
+                print("1. 회원가입 (POST /register)")
+                print("2. 로그인 (POST /login)")
+            else:
+                print("3. 권한 상승 요청 (PUT /)")
+                print("4. 이미지 보기 (GET /)")
+                print("5. 파일 다운로드 (GET /)")
+            print("99. 종료")
+            user_input = input("> ")
+            
+            if not client.is_logined and user_input == "1":
+                # 회원가입 요청
+                user_id = input("아이디를 입력하세요: ")
+                password = input("비밀번호를 입력하세요: ")
+                client.register(user_id, password)
 
-        elif client.is_logined and user_input == "3":
-            # 권한 상승 요청 
-            client.upgrade_privilege()
+            elif not client.is_logined and user_input == "2":
+                # 로그인 요청
+                user_id = input("아이디를 입력하세요: ")
+                password = input("비밀번호를 입력하세요: ")
+                client.login(user_id, password)
 
-        elif client.is_logined and user_input == "4":
-            url = input("다운받을 이미지 이름을 입력하세요: ")
-            client.download_image(url)
+            elif client.is_logined and user_input == "3":
+                # 권한 상승 요청 
+                client.upgrade_privilege()
 
-        elif client.is_logined and user_input == "5":
-            # 이미지 보기
-            pass
+            elif client.is_logined and user_input == "4":
+                url = input("다운받을 이미지 이름을 입력하세요: ")
+                client.show_image(url)
 
-        elif client.is_logined and user_input == "6":
-            # 파일 다운로드
-            pass
+            elif client.is_logined and user_input == "5":
+                # 이미지 보기
+                pass
 
-        elif user_input == "99":
-            print("클라이언트를 종료합니다.")
-            break
+            elif client.is_logined and user_input == "6":
+                # 파일 다운로드
+                pass
 
-        else:
-            print("잘못된 입력입니다. 다시 시도하세요.")
-            continue
+            elif user_input == "99":
+                print("클라이언트를 종료합니다.")
+                break
+
+            else:
+                print("잘못된 입력입니다. 다시 시도하세요.")
+                continue
 
 
 if __name__ == "__main__":
