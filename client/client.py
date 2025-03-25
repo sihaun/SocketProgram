@@ -27,17 +27,6 @@ class Client(socket.socket):
         except Exception as e:
             print("connect() error:", e)
             sys.exit(1)
-
-    def load_cookies(self) -> None:
-        try:
-            with open(COOKIES_DB, "r") as file:
-                self.session_cookie = json.load(file)
-        except:
-            self.session_cookie = {}
-
-    def save_cookies(self, cookies : dict) -> None:
-            with open(COOKIES_DB, "w") as file:
-                json.dump(cookies, file, indent=4)
     
     def __exit__(self, exc_type, exc_value, traceback):
         # exc_type, exc_value, traceback는 예외 관련 정보입니다.
@@ -48,8 +37,28 @@ class Client(socket.socket):
         self.close()
         return False  # 예외를 전파하고 싶다면 False를 반환
 
+    def _send_request(self, request : str) -> str:
+        '''
+        request를 server에 보내는 함수
+        
+        request : _create_request 로부터 return된 반복 가능한 string'''
+
+        try:
+            self.sendall(request.encode())
+        except Exception as e:
+            print("write() error:", e)
+
     def _create_request(self, method : str, url : str, headers : list=None, body : str=None) -> str:
-        """ HTTP 응답을 생성하는 함수 """
+        '''
+        creating HTTP request.
+        자동으로 self.session_cookie에 있는 쿠키를 붙혀서 request를 만들어 줌.
+        쿠키 만료 시간이 지나지 않았을 경우 쿠키를 추가시키고, 시간이 지나면 쿠키 삭제.
+        
+        method : GET, HEAD, POST, PUT
+        url : /register, /login, /privilege, /images
+        headers : header 정보가 담긴 list
+        body : 내용이 담긴 string data'''
+
         response = [f"{method} {url} HTTP/1.1"]
         response.append(f"Host: {self.host}")
 
@@ -58,7 +67,7 @@ class Client(socket.socket):
             if time.time() < self.session_cookie[cookie]["expiry_time"]: # 기간 안지났으면
                 cookies.append(f"{cookie}={self.session_cookie[cookie]["value"]}") # 쿠키 추가
             else :
-                del self.session_cookie[cookie]
+                del self.session_cookie[cookie] # 기간 지났으면 쿠키 삭제
         cookies = "; ".join(cookies)
         if cookies:
             headers_cookie = "Set-Cookie: " + cookies
@@ -75,13 +84,23 @@ class Client(socket.socket):
 
         return "\r\n".join(response)
 
-    def _send_request(self, request : str) -> str:
-        try:
-            self.sendall(request.encode())
-        except Exception as e:
-            print("write() error:", e)
+    def _response_handler(self, bin_data=False):
+        '''
+        server로부터 받은 response를 header 부분과 data 부분으로 나눔.
 
-    def _response_handler(self, bin_data=False) -> tuple:
+        data 부분이 binary 파일인 경우(이미지 파일) header 부분과 binary_data를 return
+        data 부분이 string data인 경우 header 부분과 string data를 붙혀서 return
+        
+        data 부분이 string data인 경우 cookie를 self.session_cookie에 저장
+        
+        bin_data : True if bin_data is binary else False
+        
+        return : 
+            bin_data = True:
+                tuple(header : str, image_data : bytes)
+            bin_data = False
+                string(_response)'''
+        
         _response = ""
         if not bin_data:
             _response = self.recv(4096).decode()
@@ -117,35 +136,18 @@ class Client(socket.socket):
                     self.session_cookie[name.split("=")[0]] = {"value" : name.split("=")[1], "expiry_time" : time.time() + int(max_age.split("=")[1])}
                     
         return _response
-    
-    def _is_domain(self, host : str) -> bool:
-        try:
-            domain = host.split(".")
-            if domain[0].isnumeric():
-                return False
-            elif domain[0] == "www" and domain[1].isalpha():
-                return True
-            else:
-                print(f"Invalid domain/ip: {host}")
-                sys.exit(1)
-            
-        except Exception as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-            
-    def domain_to_ip(self, host : str) -> str:
-        if self._is_domain(host):
-            domain = host.split(".")[1]
-            try:
-                return DNS[domain]
-            except Exception as e:
-                print(f"Domain not found: {domain}")
-                sys.exit(1)
-        else:
-            return host
 
     # 회원가입 요청
     def register(self, username : str, password : str) -> None:
+        '''
+        회원가입 요청. (POST /register)
+
+        username : string
+        password : string
+
+        Body content-Type: json
+        '''
+
         data = json.dumps({"username": username, "password": password})
         request = self._create_request("POST", "/register", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
@@ -160,6 +162,15 @@ class Client(socket.socket):
 
     # 로그인 요청 (쿠키 저장됨)
     def login(self, username : str, password : str) -> None:
+        '''
+        로그인 요청. (POST /login)
+
+        username : string
+        password : string
+
+        Body content-Type: json
+        '''
+
         data = json.dumps({"username": username, "password": password})
         request = self._create_request("POST", "/login", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
@@ -175,6 +186,15 @@ class Client(socket.socket):
             print(f"로그인 실패: {username}")
 
     def upgrade_privilege(self) -> None:
+        '''
+        권한 상승(수정) 요청. (PUT /privilege)
+
+        권한 수정 후 sssion_cookie에 key, expiry_time 발급.
+        expiry_time 만료 시 재발급 가능.
+
+        Body content-Type: json
+        '''
+
         data = json.dumps({"username": self.id})
         request = self._create_request("PUT", "/privilege", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
@@ -192,6 +212,21 @@ class Client(socket.socket):
             print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
 
     def show_image(self, url : str) -> None:
+        '''
+        이미지 보여주기 요청. (HEAD /images) -> (GET /images)
+
+        input을 받아 해당 url의 이미지가 존재하는 지 확인 (HEAD /images)
+        이미지가 존재하면, (GET /images)로 이미지 정보를 binary 정보로 가져와 보여줌.
+
+        가져온 이미지는 web_cash에 저장됨.
+        url을 확인한 후 먼저 web_cash에 해당 이미지가 존재하는 지 확인한 후 존재하면 가져옴
+        존재하지 않으면 (GET /images)를 통해 이미지 정보를 요청.
+
+        url : 원하는 이미지 경로. 확장자를 포함하여야 함. EX) images.jpg
+
+        Body content-Type: json
+        '''
+
         data = json.dumps({"username": self.id})
         check_privilege = self._create_request("HEAD", "/images", headers=["Content-Type: application/json"], body=data)
         self._send_request(check_privilege)
@@ -221,6 +256,50 @@ class Client(socket.socket):
 
         elif "Image not found" in headers:
             print(f"이미지가 존재하지 않습니다. Image : {url}")
+
+    def _is_domain(self, host : str) -> bool:
+        '''
+        입력된 host가 도메인인 지 확인함.
+        
+        host : ip address or domain
+        
+        return : False if host is ip address else host is domain'''
+        
+        try:
+            domain = host.split(".")
+            if domain[0].isnumeric():
+                return False
+            elif domain[0] == "www" and domain[1].isalpha():
+                return True
+            else:
+                print(f"Invalid domain/ip: {host}")
+                sys.exit(1)
+            
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+            
+    def domain_to_ip(self, host : str) -> str:
+        if self._is_domain(host):
+            domain = host.split(".")[1]
+            try:
+                return DNS[domain]
+            except Exception as e:
+                print(f"Domain not found: {domain}")
+                sys.exit(1)
+        else:
+            return host
+
+    def load_cookies(self) -> None:
+        try:
+            with open(COOKIES_DB, "r") as file:
+                self.session_cookie = json.load(file)
+        except:
+            self.session_cookie = {}
+
+    def save_cookies(self, cookies : dict) -> None:
+            with open(COOKIES_DB, "w") as file:
+                json.dump(cookies, file, indent=4)
 
 
 def main(host : str, port : int):
