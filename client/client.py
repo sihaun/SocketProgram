@@ -6,7 +6,8 @@ from PIL import Image
 from io import BytesIO
 import os
 
-SERVER_IP = "000.000.0.0"
+# client.py 사용 전 지정해줘야 함
+SERVER_IP = "000.000.0.0" 
 COOKIES_DB = "cookies.json"
 DNS = {
     "server": SERVER_IP,
@@ -22,6 +23,7 @@ class Client(socket.socket):
         self.is_logined = False
         self.id = None
 
+        # connect client to server
         try:
             self.connect((self.host, self.port))
         except Exception as e:
@@ -29,7 +31,6 @@ class Client(socket.socket):
             sys.exit(1)
     
     def __exit__(self, exc_type, exc_value, traceback):
-        # exc_type, exc_value, traceback는 예외 관련 정보입니다.
         if exc_type:
             print(f"An exception occurred: {exc_value}")
         self.save_cookies(self.session_cookie)
@@ -43,6 +44,7 @@ class Client(socket.socket):
         
         request : _create_request 로부터 return된 반복 가능한 string'''
 
+        # send request to server
         try:
             self.sendall(request.encode())
         except Exception as e:
@@ -73,6 +75,7 @@ class Client(socket.socket):
             headers_cookie = "Set-Cookie: " + cookies
             response.append(headers_cookie)
 
+        # add headers
         if headers:
             response.extend(headers)
 
@@ -80,7 +83,8 @@ class Client(socket.socket):
             response.append(f"Content-Length: {len(body.encode())}")  # 본문 길이 추가
             response.append("")  # 헤더 종료
 
-            response.append(body)  # 본문 추가
+            # add body(data)
+            response.append(body)
 
         return "\r\n".join(response)
 
@@ -101,6 +105,7 @@ class Client(socket.socket):
             bin_data = False
                 string(_response)'''
         
+        # recieve response and data by server
         _response = ""
         if not bin_data:
             _response = self.recv(4096).decode()
@@ -108,13 +113,14 @@ class Client(socket.socket):
         else: # 여기까지는 들어옴
             _b_response = b""
             while True:
-                chunk = self.recv(4 * 1024)
+                chunk = self.recv(4 * 1024) # data를 chunk 조각으로 나누어 받음
                 if not chunk:
                     break
                 
                 _b_response += chunk
 
-                if b"\r\n\r\n" in _b_response:
+                # header와 data 분류
+                if b"\r\n\r\n" in _b_response: 
                     (header, image_data) = _b_response.split(b"\r\n\r\n", 1)
                     break
             
@@ -264,12 +270,12 @@ class Client(socket.socket):
         host : ip address or domain
         
         return : False if host is ip address else host is domain'''
-        
+
         try:
             domain = host.split(".")
-            if domain[0].isnumeric():
+            if domain[0].isnumeric(): # 192.000.0.0
                 return False
-            elif domain[0] == "www" and domain[1].isalpha():
+            elif domain[0] == "www" and domain[1].isalpha(): # www.server.com
                 return True
             else:
                 print(f"Invalid domain/ip: {host}")
@@ -280,10 +286,19 @@ class Client(socket.socket):
             sys.exit(1)
             
     def domain_to_ip(self, host : str) -> str:
+        '''
+        입력된 host가 domain일 경우 ip address로 변환.
+        
+        DNS : 
+            "domain name" : ip address 형식의 dict
+            
+        host : ip address or domain
+        
+        return : ip address'''
         if self._is_domain(host):
             domain = host.split(".")[1]
             try:
-                return DNS[domain]
+                return DNS[domain] # domain name system
             except Exception as e:
                 print(f"Domain not found: {domain}")
                 sys.exit(1)
@@ -291,18 +306,48 @@ class Client(socket.socket):
             return host
 
     def load_cookies(self) -> None:
+        '''
+        COOKIES_DB에 저장된 client의 쿠키 정보를 loading함.'''
         try:
             with open(COOKIES_DB, "r") as file:
                 self.session_cookie = json.load(file)
         except:
             self.session_cookie = {}
 
-    def save_cookies(self, cookies : dict) -> None:
-            with open(COOKIES_DB, "w") as file:
-                json.dump(cookies, file, indent=4)
+    def save_cookies(self, session_cookies : dict) -> None:
+        '''
+        session_cookies에 저장된 쿠키 내용을 COOKIES_DB에 저장
+        
+        session_cookies : dict'''
+        with open(COOKIES_DB, "w") as file:
+            json.dump(session_cookies, file, indent=4)
 
 
 def main(host : str, port : int):
+    '''
+    회원가입, 로그인, 권한 상승, 이미지 보기 기능을 이용할 수 있는 클라이언트.
+    실행 시 초기 화면으로 회원가입, 로그인 기능만 이용 가능.
+    로그인 시 권한 상승, 이미지 보기 기능 이용 가능.
+    이미지 보기 기능은 권한이 상승된 상태에서 이용 가능.
+    종료는 99를 눌러야 가능.
+
+    회원가입부터 이미지 보기 절차 :
+    회원 가입 -> 로그인 -> 권한 상승 요청 -> 이미지 보기
+
+    이전에 회원가입과 로그인까지만 마친 경우 :
+    로그인 -> 권한 상승 요청 -> 이미지 보기
+
+    이전에 권한 상승 요청까지 마친 경우 :
+    로그인 -> 이미지 보기
+
+    host : domain or ip address.
+        domain은 현재 DNS에 www.server 로 지정되어 있음.
+        domain을 사용하려면 SERVER_IP에 사전에 server ip address를 입력해 놓아야 함.
+
+        ip address를 입력할 경우 server의 ip address를 str로 입력.
+
+    port : server.py에 사용한 port와 같은 port를 사용
+    '''
 
     with Client(host, port) as client:
 
@@ -314,7 +359,6 @@ def main(host : str, port : int):
             else:
                 print("3. 권한 상승 요청 (PUT /)")
                 print("4. 이미지 보기 (GET /)")
-                print("5. 파일 다운로드 (GET /)")
             print("99. 종료")
             user_input = input("> ")
             
@@ -335,16 +379,8 @@ def main(host : str, port : int):
                 client.upgrade_privilege()
 
             elif client.is_logined and user_input == "4":
-                url = input("다운받을 이미지 이름을 입력하세요: ")
+                url = input("이미지 url을 입력하세요: ")
                 client.show_image(url)
-
-            elif client.is_logined and user_input == "5":
-                # 이미지 보기
-                pass
-
-            elif client.is_logined and user_input == "6":
-                # 파일 다운로드
-                pass
 
             elif user_input == "99":
                 print("클라이언트를 종료합니다.")
@@ -360,7 +396,7 @@ if __name__ == "__main__":
         print("Usage: {} <IP> <port>".format(sys.argv[0]))
         sys.exit(1)
     
-    server_host = sys.argv[1]
-    server_port = int(sys.argv[2])
+    server_host = sys.argv[1] # host
+    server_port = int(sys.argv[2]) # port
 
     main(server_host, server_port)

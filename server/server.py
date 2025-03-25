@@ -20,7 +20,6 @@ class Server(socket.socket):
         self.default_key = "0"
 
     def __exit__(self, exc_type, exc_value, traceback):
-        # exc_type, exc_value, traceback는 예외 관련 정보입니다.
         if exc_type:
             print(f"An exception occurred: {exc_value}")
         print("Server closed")
@@ -29,7 +28,7 @@ class Server(socket.socket):
     def load_users(self) -> dict:
         with self.lock_user_db:
             if not os.path.exists(USER_DB):
-                return {} # 나중에 파일이 없을 때 파일 추가
+                return {} 
             with open(USER_DB, "r") as file:
                 return json.load(file)
 
