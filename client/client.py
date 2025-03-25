@@ -77,21 +77,34 @@ class Client(socket.socket):
         except Exception as e:
             print("write() error:", e)
 
-    def _response_handler(self, bin_data=False) -> str:
+    def _response_handler(self, bin_data=False) -> tuple:
         _response = ""
-        try:
-            if not bin_data:
-                _response = self.recv(4096).decode()
-                print(f"_response : \n{_response}")
-            else:
-                _b_response = self.recv(4096)
-                (header, image_data) = _b_response.split(b"\r\n\r\n", 1)
-                print("header.decode() :", header.decode())
+        if not bin_data:
+            _response = self.recv(4096).decode()
+            print(f"_response : \n{_response}")
+        else: # 여기까지는 들어옴
+            _b_response = b""
+            while True:
+                chunk = self.recv(4 * 1024)
+                if not chunk:
+                    break
+                
+                _b_response += chunk
 
-                return (header.decode(), image_data)
+                if b"\r\n\r\n" in _b_response:
+                    (header, image_data) = _b_response.split(b"\r\n\r\n", 1)
+                    break
+            
+            while True:
+                chunk = self.recv(4096)
+                if not chunk:
+                    break
+                image_data += chunk 
+                if len(chunk) < 4096:
+                    break
 
-        except Exception as e:
-            print("read() error:", e)
+            return (header.decode(), image_data)
+
 
         # Set-Cookie 처리 (쿠키 저장)
         if "Set-Cookie" in _response:
@@ -188,11 +201,9 @@ class Client(socket.socket):
         # 200 OK
         url_data = json.dumps({"url": url})
         print(f"{url_data}")
-        request = self._create_request("GET", "/images", headers=["Content-Type: application/json"], body=url_data)
+        request = self._create_request("GET", "/images", headers=["Content-Type: image/jpg"], body=url_data)
         self._send_request(request)
         (headers, image_data) = self._response_handler(bin_data=True)
-        headers = headers.decode()
-        print("headers :\n", headers)
 
         if "200 OK" in headers:
             with open(url, "wb") as f:
@@ -201,6 +212,7 @@ class Client(socket.socket):
 
         elif "Image not found" in headers:
             print(f"이미지가 존재하지 않습니다. Image : {url}")
+
 
 
 

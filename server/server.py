@@ -39,13 +39,12 @@ class Server(socket.socket):
         print(f"[{addr[0]}] is accept.")
         while True:
             try:
-                request = client_socket.recv(1024).decode()  # 클라이언트로부터 데이터 수신
+                request = client_socket.recv(4096).decode()  # 클라이언트로부터 데이터 수신
                 if not request:
                     break  # 클라이언트가 연결을 종료하면 루프 종료
 
                 (response, bin_file) = self.request_handler(request)
                 if bin_file is not None:
-                    print("bin_file is not None")
                     client_socket.sendall(response.encode() + bin_file)
                 else: 
                     client_socket.sendall(response.encode())
@@ -57,7 +56,7 @@ class Server(socket.socket):
         print(f"[{addr[0]}] 연결 종료.")
         client_socket.close()
 
-    def _create_response(self, status : str, headers : list=None, body=None) -> str:
+    def _create_response_str(self, status : str, headers : list=None, body : str=None) -> tuple:
         """ HTTP 응답을 생성하는 함수 """
         response = [f"HTTP/1.1 {status}"]
         if headers:
@@ -66,53 +65,62 @@ class Server(socket.socket):
             response.append(f"Content-Length: {len(body.encode())}")  # 본문 길이 추가
             response.append("")  # 헤더 종료
             response.append(body)  # 본문 추가
-        return "\r\n".join(response)
+        return ("\r\n".join(response), None)
+    
+    def _create_response_byte(self, status : str, headers : list, body : bytes) -> tuple:
+        """ HTTP 응답을 생성하는 함수 """
+        response = [f"HTTP/1.1 {status}"]
+        response.extend(headers)
 
-    def register_handler(self, id : str, password : str) -> str:
+        response.append(f"Content-Length: {len(body)}")  # 본문 길이 추가
+        response.append("\r\n")  # 헤더 종료
+
+        return ("\r\n".join(response), body)
+
+    def register_handler(self, id : str, password : str) -> tuple:
         users = self.load_users()
         if id in users:
-            return self._create_response("400 Bad Request", body="REGISTER_FAILED: User already exists")
+            return self._create_response_str("400 Bad Request", body="REGISTER_FAILED: User already exists")
         
         users[id] = {"pw" : password, "key" : {"value" : self.default_key, "expiry_time" : 0} }
         self.save_users(users)
-        return self._create_response("200 OK", body="REGISTER_SUCCESS")
+        return self._create_response_str("200 OK", body="REGISTER_SUCCESS")
 
-    def login_handler(self, id : str, password : str) -> str:
+    def login_handler(self, id : str, password : str) -> tuple:
         users = self.load_users()
         if users.get(id)["pw"] == password:
             session_id = f"{id}"
             SESSION_DB[session_id] = id  # 세션 저장
 
             headers = [f"Set-Cookie: session_id={session_id}; Max-Age=3600"]
-            return self._create_response("200 OK", headers, body="LOGIN_SUCCESS")
+            return self._create_response_str("200 OK", headers, body="LOGIN_SUCCESS")
 
-        return self._create_response("401 Unauthorized", body="LOGIN_FAILED")
+        return self._create_response_str("401 Unauthorized", body="LOGIN_FAILED")
     
-    def privilege_handler(self, id : dict, key_is_valid : bool=True, check : bool=True) -> str:
+    def privilege_handler(self, id : dict, key_is_valid : bool=True, check : bool=True) -> tuple:
         users = self.load_users()  
 
         if check:
             if key_is_valid:
-                return self._create_response("200 OK")
-            return self._create_response("401 Unauthorized")
+                return self._create_response_str("200 OK")
+            return self._create_response_str("401 Unauthorized")
         
         if key_is_valid:
-            return self._create_response("409 Conflict", body="PRIVILEGE_ALREADY_CHANGED")
+            return self._create_response_str("409 Conflict", body="PRIVILEGE_ALREADY_CHANGED")
         
         users.get(id)["key"]["value"] = "ABCD"
         users.get(id)["key"]["expiry_time"] = time.time() + 3600
         self.save_users(users)
 
         headers = [f"Set-Cookie: key=ABCD; Max-Age=3600"]
-        return self._create_response("200 OK", headers, body="PRIVILEGE_CHANGED")
+        return self._create_response_str("200 OK", headers, body="PRIVILEGE_CHANGED")
     
     def image_downloader(self, url : str) -> str:
         if os.path.exists(url):
             with open(url, "rb") as f:
                 image_data = f.read()
-            return (self._create_response("200 OK", headers=[f"Content-Type: image/jpeg", "Content-Disposition: attachment", "filename={url}"]), image_data)
-        return (self._create_response("404 Not Found", body="Image not found"), None)
-
+            return self._create_response_byte("200 OK", headers=["Content-Type: image/jpg", "Content-Disposition: attachment",f"filename={url}"], body=image_data)
+        return self._create_response_str("404 Not Found", body="Image not found")
 
     def request_handler(self, request : str) -> tuple:
         print(request)
@@ -123,25 +131,25 @@ class Server(socket.socket):
 
         if method == "POST" and path == "/register": # register
             data = json.loads(body)
-            return self.register_handler(data["username"], data["password"]), None
+            return self.register_handler(data["username"], data["password"])
         
         elif method == "POST" and path == "/login": # login
             data = json.loads(body)
-            return self.login_handler(data["username"], data["password"]), None
+            return self.login_handler(data["username"], data["password"])
         
         elif path == "/privilege": # privilege
             data = json.loads(body)
             id = data["username"]
             valid = self._is_valid_key(id)
 
-            return (self.privilege_handler(id, valid, check=False), None)
+            return self.privilege_handler(id, valid, check=False)
         
         elif path == "/images": # image
             if method == "HEAD":
                 data = json.loads(body)
                 id = data["username"]
                 valid = self._is_valid_key(id)
-                return (self._create_response("200 OK"), None) if valid else (self._create_response("401 Unauthorized"), None) # check key
+                return self._create_response_str("200 OK") if valid else self._create_response_str("401 Unauthorized") # check key
             
             url_data = json.loads(body)
             url = url_data["url"]
@@ -152,7 +160,7 @@ class Server(socket.socket):
                 pass
                     # 파일 다운로드 요청
         
-        return self._create_response("404 Not Found", body="Page not found"), None
+        return self._create_response_str("404 Not Found", body="Page not found")
     
     def _is_valid_key(self, id : str) -> bool:
         users = self.load_users()
