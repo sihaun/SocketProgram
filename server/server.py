@@ -13,11 +13,10 @@ class Server(socket.socket):
         socket.socket.__init__(self, socket.AF_INET, socket.SOCK_STREAM)
         self.bind(("", port))
         self.listen(3)
-        print(f"Server started at {port}")
 
-        self.lock_user_db = threading.Lock()
+        self.lock_user_db = threading.Lock() # 데이터베이스 중복 접근 방지지
 
-        self.default_key = "0"
+        self.default_key = "0" # register시 주어지는 기본 키
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type:
@@ -26,6 +25,8 @@ class Server(socket.socket):
         self.close()
 
     def load_users(self) -> dict:
+        '''
+        유저 데이터베이스에 있는 내용을 load함'''
         with self.lock_user_db:
             if not os.path.exists(USER_DB):
                 return {} 
@@ -33,11 +34,21 @@ class Server(socket.socket):
                 return json.load(file)
 
     def save_users(self, users : dict) -> None:
+        '''
+        user에 있는 내용을 유저 데이터베이스에 업데이트
+        
+        users : dict'''
         with self.lock_user_db:
             with open(USER_DB, "w") as file:
                 json.dump(users, file, indent=4)
 
     def client_handler(self, client_socket : socket.socket, addr) -> None:
+        '''
+        연결된 client의 data 수신 => request를 보고 response 생성 후 전송
+        response를 
+        
+        client_socket : socket.socket. 통신 소켓
+        addr : address'''
         print(f"[{addr[0]}] is accept.")
         while True:
             try:
@@ -46,7 +57,7 @@ class Server(socket.socket):
                     break  # 클라이언트가 연결을 종료하면 루프 종료
 
                 (response, bin_file) = self.request_handler(request)
-                if bin_file is not None:
+                if bin_file is not None: # 
                     client_socket.sendall(response.encode() + bin_file)
                 else: 
                     client_socket.sendall(response.encode())
@@ -59,7 +70,13 @@ class Server(socket.socket):
         client_socket.close()
 
     def _create_response_str(self, status : str, headers : list=None, body : str=None) -> tuple:
-        """ HTTP 응답을 생성하는 함수 """
+        """ HTTP 응답을 생성하는 함수 
+        
+        status : 응답 상태
+        headers : 헤더들을 리스트로 전달
+        body : string data
+        
+        return : response를 string으로 전달, None(byte 데이터가 존재하지 않음)"""
         response = [f"HTTP/1.1 {status}"]
         if headers:
             response.extend(headers)
@@ -70,7 +87,13 @@ class Server(socket.socket):
         return ("\r\n".join(response), None)
     
     def _create_response_byte(self, status : str, headers : list, body : bytes) -> tuple:
-        """ HTTP 응답을 생성하는 함수 """
+        """ HTTP 응답을 생성하는 함수 
+
+        status : 응답 상태
+        headers : 헤더들을 리스트로 전달
+        body : data를 byte형식으로 전달
+
+        return : response를 string으로 전달, byte data"""
         response = [f"HTTP/1.1 {status}"]
         response.extend(headers)
 
@@ -179,8 +202,7 @@ def main(port):
     with Server(port) as server:
         while True:
             client_socket, addr = server.accept()
-            threading_client_handler = threading.Thread(target=server.client_handler, args=(client_socket, addr))
-            threading_client_handler.start()
+            server.client_handler(client_socket, addr)
 
 
 if __name__ == "__main__":
@@ -189,4 +211,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     port = int(sys.argv[1])
-    main(port)
+    threading_socket = threading.Thread(target=main, args=port) # threading socket
+    print(f"Server started at {port}")
+    threading_socket.start()
