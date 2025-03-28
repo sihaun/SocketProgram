@@ -19,7 +19,7 @@ class Client(socket.socket):
         self.host = self.domain_to_ip(host)
         self.port = port
 
-        self.session_cookie = None
+        self.session_cookie = {}
         self.is_logined = False
         self.id = None
 

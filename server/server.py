@@ -211,6 +211,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     port = int(sys.argv[1])
-    threading_socket = threading.Thread(target=main, args=port) # threading socket
+    threading_socket = threading.Thread(target=main, args=(port,)) # threading socket
     print(f"Server started at {port}")
     threading_socket.start()
