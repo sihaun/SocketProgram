@@ -4,8 +4,10 @@ import os
 import sys
 import time
 import threading
+from datetime import datetime
 
 USER_DB = "users.json"
+LOG_FILE = "server_log.txt"
 
 class Server(socket.socket):
     def __init__(self, port : int):
@@ -19,8 +21,8 @@ class Server(socket.socket):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type:
-            print(f"An exception occurred: {exc_value}")
-        print("Server closed")
+            self.log_message(f"An exception occurred: {exc_value}")
+        self.log_message("Server closed")
         self.close()
 
     def load_users(self) -> dict:
@@ -48,7 +50,7 @@ class Server(socket.socket):
         
         client_socket : socket.socket. 통신 소켓
         addr : address'''
-        print(f"[{addr[0]}] is accept.")
+        self.log_message(f"[{addr[0]}] is accept.")
         while True:
             try:
                 request = client_socket.recv(4096).decode()  # 클라이언트로부터 데이터 수신
@@ -62,10 +64,10 @@ class Server(socket.socket):
                     client_socket.sendall(response.encode())
 
             except ConnectionResetError:
-                print(f"[{addr[0]}] 연결이 강제 종료되었습니다.")
+                self.log_message(f"[{addr[0]}] 연결이 강제 종료되었습니다.")
                 break
 
-        print(f"[{addr[0]}] 연결 종료.")
+        self.log_message(f"[{addr[0]}] 연결 종료.")
         client_socket.close()
 
     def _create_response_str(self, status : str, headers : list=None, body : str=None) -> tuple:
@@ -192,7 +194,7 @@ class Server(socket.socket):
         return : handler의 return 값. client에 다시 보낼 response.
                 response에 byte data가 없을 시 (response, None)
                 response에 byte data가 존재하면 (response, byte data) 형식'''
-        print(request)
+        self.log_message(request)
         lines = request.split("\r\n")
         method, path, _ = lines[0].split(" ")
         headers = lines[1:]
@@ -246,6 +248,12 @@ class Server(socket.socket):
             return False
         
         return True
+    
+    def log_message(message):
+        timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{timestamp} {message}\n")
+        print(message)
 
 def main(port):
     '''
