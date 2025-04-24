@@ -25,51 +25,6 @@ class Server(socket.socket):
         self.log_message("Server closed")
         self.close()
 
-    def load_users(self) -> dict:
-        '''
-        유저 데이터베이스에 있는 내용을 load함'''
-        with self.lock_user_db:
-            if not os.path.exists(USER_DB):
-                return {} 
-            with open(USER_DB, "r") as file:
-                return json.load(file)
-
-    def save_users(self, users : dict) -> None:
-        '''
-        user에 있는 내용을 유저 데이터베이스에 업데이트
-        
-        users : dict'''
-        with self.lock_user_db:
-            with open(USER_DB, "w") as file:
-                json.dump(users, file, indent=4)
-
-    def client_handler(self, client_socket : socket.socket, addr) -> None:
-        '''
-        연결된 client의 data 수신 => request를 보고 response 생성 후 전송
-        response를 
-        
-        client_socket : socket.socket. 통신 소켓
-        addr : address'''
-        self.log_message(f"[{addr[0]}] is accept.")
-        while True:
-            try:
-                request = client_socket.recv(4096).decode()  # 클라이언트로부터 데이터 수신
-                if not request:
-                    break  # 클라이언트가 연결을 종료하면 루프 종료
-
-                (response, bin_file) = self.request_handler(request)
-                if bin_file is not None: # 
-                    client_socket.sendall(response.encode() + bin_file)
-                else: 
-                    client_socket.sendall(response.encode())
-
-            except ConnectionResetError:
-                self.log_message(f"[{addr[0]}] 연결이 강제 종료되었습니다.")
-                break
-
-        self.log_message(f"[{addr[0]}] 연결 종료.")
-        client_socket.close()
-
     def _create_response_str(self, status : str, headers : list=None, body : str=None) -> tuple:
         """ HTTP 응답을 생성하는 함수 
         
@@ -102,7 +57,79 @@ class Server(socket.socket):
         response.append("\r\n")  # 헤더 종료
 
         return ("\r\n".join(response), body)
+    
+    def client_handler(self, client_socket : socket.socket, addr) -> None:
+        '''
+        연결된 client의 data 수신 => request를 보고 response 생성 후 전송
+        response를 
+        
+        client_socket : socket.socket. 통신 소켓
+        addr : address'''
+        self.log_message(f"[{addr[0]}] is accept.")
+        while True:
+            try:
+                request = client_socket.recv(4096).decode()  # 클라이언트로부터 데이터 수신
+                if not request:
+                    break  # 클라이언트가 연결을 종료하면 루프 종료
 
+                (response, bin_file) = self.request_handler(request)
+                if bin_file is not None: # 
+                    client_socket.sendall(response.encode() + bin_file)
+                else: 
+                    client_socket.sendall(response.encode())
+
+            except ConnectionResetError:
+                self.log_message(f"[{addr[0]}] 연결이 강제 종료되었습니다.")
+                break
+
+        self.log_message(f"[{addr[0]}] 연결 종료.")
+        client_socket.close()
+
+    def request_handler(self, request : str) -> tuple:
+        '''
+        client로부터 받은 request정보를 처리하는 함수
+        
+        request를 method, path, headers, body로 나눔.
+        method와 path를 보고 처리해야할 함수(handler)에 body data를 보냄.
+        
+        request : client로부터 받은 request
+        
+        return : handler의 return 값. client에 다시 보낼 response.
+                response에 byte data가 없을 시 (response, None)
+                response에 byte data가 존재하면 (response, byte data) 형식'''
+        self.log_message(request)
+        lines = request.split("\r\n")
+        method, path, _ = lines[0].split(" ")
+        headers = lines[1:]
+        body = lines[-1]
+
+        if method == "POST" and path == "/register": # register
+            data = json.loads(body)
+            return self.register_handler(data["username"], data["password"])
+        
+        elif method == "POST" and path == "/login": # login
+            data = json.loads(body)
+            return self.login_handler(data["username"], data["password"])
+        
+        elif method == "PUT" and path == "/privilege": # privilege
+            data = json.loads(body)
+            id = data["username"]
+            valid = self._is_valid_key(id)
+            return self.privilege_handler(id, valid)
+        
+        elif path == "/images": # image
+            if method == "HEAD":
+                data = json.loads(body)
+                id = data["username"]
+                valid = self._is_valid_key(id)
+                return self._create_response_str("200 OK") if valid else self._create_response_str("401 Unauthorized") # check key
+            
+            url_data = json.loads(body)
+            url = url_data["url"]
+            return self.image_downloader(url)
+        
+        return self._create_response_str("404 Not Found", body="Page not found")
+    
     def register_handler(self, id : str, password : str) -> tuple:
         '''
         client가 /register로 접근했을 때 처리하는 함수.
@@ -182,50 +209,23 @@ class Server(socket.socket):
             return self._create_response_byte("200 OK", headers=["Content-Type: image/jpg", "Content-Disposition: attachment",f"filename={url}"], body=image_data)
         return self._create_response_str("404 Not Found", body="Image not found")
 
-    def request_handler(self, request : str) -> tuple:
+    def load_users(self) -> dict:
         '''
-        client로부터 받은 request정보를 처리하는 함수
-        
-        request를 method, path, headers, body로 나눔.
-        method와 path를 보고 처리해야할 함수(handler)에 body data를 보냄.
-        
-        request : client로부터 받은 request
-        
-        return : handler의 return 값. client에 다시 보낼 response.
-                response에 byte data가 없을 시 (response, None)
-                response에 byte data가 존재하면 (response, byte data) 형식'''
-        self.log_message(request)
-        lines = request.split("\r\n")
-        method, path, _ = lines[0].split(" ")
-        headers = lines[1:]
-        body = lines[-1]
+        유저 데이터베이스에 있는 내용을 load함'''
+        with self.lock_user_db:
+            if not os.path.exists(USER_DB):
+                return {} 
+            with open(USER_DB, "r") as file:
+                return json.load(file)
 
-        if method == "POST" and path == "/register": # register
-            data = json.loads(body)
-            return self.register_handler(data["username"], data["password"])
+    def save_users(self, users : dict) -> None:
+        '''
+        user에 있는 내용을 유저 데이터베이스에 업데이트
         
-        elif method == "POST" and path == "/login": # login
-            data = json.loads(body)
-            return self.login_handler(data["username"], data["password"])
-        
-        elif path == "/privilege": # privilege
-            data = json.loads(body)
-            id = data["username"]
-            valid = self._is_valid_key(id)
-            return self.privilege_handler(id, valid)
-        
-        elif path == "/images": # image
-            if method == "HEAD":
-                data = json.loads(body)
-                id = data["username"]
-                valid = self._is_valid_key(id)
-                return self._create_response_str("200 OK") if valid else self._create_response_str("401 Unauthorized") # check key
-            
-            url_data = json.loads(body)
-            url = url_data["url"]
-            return self.image_downloader(url)
-        
-        return self._create_response_str("404 Not Found", body="Page not found")
+        users : dict'''
+        with self.lock_user_db:
+            with open(USER_DB, "w") as file:
+                json.dump(users, file, indent=4)
     
     def _is_valid_key(self, id : str) -> bool:
         '''
@@ -249,11 +249,12 @@ class Server(socket.socket):
         
         return True
     
-    def log_message(message):
+    def log_message(self, message):
         timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"{timestamp} {message}\n")
         print(message)
+
 
 def main(port):
     '''

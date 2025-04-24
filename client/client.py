@@ -7,7 +7,7 @@ from io import BytesIO
 import os
 
 # client.py 사용 전 지정해줘야 함
-SERVER_IP = "000.000.0.0" 
+SERVER_IP = "127.0.0.1" 
 COOKIES_DB = "cookies.json"
 DNS = {
     "server": SERVER_IP,
