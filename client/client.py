@@ -392,6 +392,10 @@ def main(host : str, port : int):
 
 
 if __name__ == "__main__":
+    '''
+    system argument로 host, port를 받아옴.
+    sys.argv[1] : host
+    sys.argv[2] : port'''
     if len(sys.argv) != 3:
         print("Usage: {} <IP> <port>".format(sys.argv[0]))
         sys.exit(1)

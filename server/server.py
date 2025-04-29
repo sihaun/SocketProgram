@@ -15,7 +15,7 @@ class Server(socket.socket):
         self.bind(("", port))
         self.listen(3)
 
-        self.lock_user_db = threading.Lock() # 데이터베이스 중복 접근 방지지
+        self.lock_user_db = threading.Lock() # 데이터베이스 중복 접근 방지
 
         self.default_key = "0" # register시 주어지는 기본 키
 
@@ -96,22 +96,31 @@ class Server(socket.socket):
         
         return : handler의 return 값. client에 다시 보낼 response.
                 response에 byte data가 없을 시 (response, None)
-                response에 byte data가 존재하면 (response, byte data) 형식'''
+                response에 byte data가 존재하면 (response, byte data) 형식
+                
+                일치하는 path가 없으면 404 return'''
         self.log_message(request)
         lines = request.split("\r\n")
         method, path, _ = lines[0].split(" ")
         headers = lines[1:]
         body = lines[-1]
 
-        if method == "POST" and path == "/register": # register
+        if path == "/register" and method == "POST": # register
+            '''
+            client로부터 입력받은 body의 username, password를 register_handler로 전달'''
             data = json.loads(body)
             return self.register_handler(data["username"], data["password"])
         
-        elif method == "POST" and path == "/login": # login
+        elif path == "/login" and method == "POST": # login
+            '''
+            client로부터 입력받은 body의 username, password를 login_handler로 전달'''
             data = json.loads(body)
             return self.login_handler(data["username"], data["password"])
         
-        elif method == "PUT" and path == "/privilege": # privilege
+        elif path == "/privilege" and method == "PUT": # privilege
+            '''
+            client로부터 입력받은 body의 username을 id로 받아 권한 유효성 검사를 실행.
+            이후 결과와 id를 privilege_handler로 전달'''
             data = json.loads(body)
             id = data["username"]
             valid = self._is_valid_key(id)
@@ -119,19 +128,22 @@ class Server(socket.socket):
         
         elif path == "/images": # image
             if method == "HEAD":
-                try:
-                    data = json.loads(body)
-                except json.JSONDecodeError:
-                    return self._create_response_str("400 Bad Request", body="Invalid JSON")
+                '''
+                client로부터 입력받은 body의 username을 id로 받아 권한 유효성 검사를 실행.
+                유효하다면 200, 유효하지 않다면 401 return'''
+                data = json.loads(body)
                 id = data["username"]
                 if not id:
                     return self._create_response_str("400 Bad Request", body="Missing username")
                 valid = self._is_valid_key(id)
                 return self._create_response_str("200 OK") if valid else self._create_response_str("401 Unauthorized") # check key
             
-            url_data = json.loads(body)
-            url = url_data["url"]
-            return self.image_downloader(url)
+            elif method == "GET":
+                '''
+                client로부터 입력받은 body의 image_url을 받아 image_downloader로 전달'''
+                url_data = json.loads(body)
+                url = url_data["url"]
+                return self.image_downloader(url)
         
         return self._create_response_str("404 Not Found", body="Page not found")
     
