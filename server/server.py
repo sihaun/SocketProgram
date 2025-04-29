@@ -119,8 +119,13 @@ class Server(socket.socket):
         
         elif path == "/images": # image
             if method == "HEAD":
-                data = json.loads(body)
+                try:
+                    data = json.loads(body)
+                except json.JSONDecodeError:
+                    return self._create_response_str("400 Bad Request", body="Invalid JSON")
                 id = data["username"]
+                if not id:
+                    return self._create_response_str("400 Bad Request", body="Missing username")
                 valid = self._is_valid_key(id)
                 return self._create_response_str("200 OK") if valid else self._create_response_str("401 Unauthorized") # check key
             
@@ -250,9 +255,16 @@ class Server(socket.socket):
         return True
     
     def log_message(self, message):
+        '''
+        서버가 생성한 메세지들을 LOG_FILE에 저장.
+
+        timestamp message 형태로 저장
+        
+        message : 서버가 생성한 메세지'''
         timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        log_entry = f"{timestamp} {message}\n"
         with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(f"{timestamp} {message}\n")
+            f.write(log_entry)
         print(message)
 
 
@@ -264,9 +276,12 @@ def main(port):
     클라이언트가 접근 => client_handler 실행
     을 무한 반복'''
     with Server(port) as server:
-        while True:
-            client_socket, addr = server.accept()
-            server.client_handler(client_socket, addr)
+        try:
+            while True:
+                client_socket, addr = server.accept()
+                server.client_handler(client_socket, addr)
+        except KeyboardInterrupt:
+            print("서버 종료 중...")
 
 
 if __name__ == "__main__":
