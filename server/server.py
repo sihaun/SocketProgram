@@ -181,6 +181,8 @@ class Server(socket.socket):
             if users.get(id)["pw"] == password: # login success
                 return self._create_response_str("200 OK", body="LOGIN_SUCCESS")
         except: # get(id) == None or get(id) != password
+            '''
+            보안을 위해 login success 제외 모든 경우를 401로 return'''
             pass
         return self._create_response_str("401 Unauthorized", body="LOGIN_FAILED")
     
