@@ -16,7 +16,7 @@ $ pip install pillow
 
 ## 사용법
 ### 1. **서버 실행**
-포트 번호를 지정하여 서버를 실행하세요:
+server 디렉터리로 이동한 후 포트 번호를 지정하여 서버를 실행하세요:
 
 ```sh
 $ python server.py <port>
@@ -29,8 +29,12 @@ $ python server.py 80
 ```
 
 이렇게 하면 서버가 `80` 포트에서 시작되며, 클라이언트의 요청을 대기합니다.
+<p align="center">
+    <img src="src/image_1.png" width="50%" height="50%">
+</p>
 
 ---
+
 ### 2. **클라이언트 연결**
 
 ```sh
@@ -41,23 +45,61 @@ $ python client.py <host> <port>
 ```sh
 $ python client.py www.server.com 80
 ```
-`<host>`에 서버의 IP 주소 또는 도메인을 입력하고, `<port>`에 서버 포트를 입력합니다.
+client 디렉터리로 이동한 후 코드를 실행합니다. `<host>`에 서버의 IP 주소 또는 도메인을 입력하고, `<port>`에 서버 포트를 입력합니다.
 
 연결에 성공하면 아래와 같은 화면이 나타납니다:
-(사진)
+<p align="center">
+    <img src="src/image_2.png" width="50%" height="50%">
+</p>
 
+server.py를 실행한 shell에서도 다음과 같은 출력이 나오면 정상적으로 연결된 것입니다:
+<p align="center">
+    <img src="src/image_3.png" width="50%" height="50%">
+</p>
 
 ---
-### 3. **등록 요청**
-서버를 이용하기 위해서는 사용자를 등록해야합니다. 
-### 4. **로그인**
-### 5. **권한 상승 요청**
-### 6. **이미지 다운로드 요청**
 
+### 3. **회원가입**
+서버를 이용하기 위해서는 회원가입을 진행해야합니다. 클라이언트 창으로 이동한 후 **1번(1. 회원가입)** 을 눌러주면 다음과 같은 화면이 출력됩니다:
+<p align="center">
+    <img src="src/image_4.png" width="50%" height="50%">
+</p>
+아이디와 비밀번호를 정상적으로 작성하면 다음과 같은 화면이 출력됩니다:
+<p align="center">
+    <img src="src/image_5.png" width="50%" height="50%">
+</p>
+중복된 사용자가 이미 존재할 경우 다음과 같은 에러 메세지가 출력됩니다:
+<p align="center">
+    <img src="src/image_6.png" width="50%" height="50%">
+</p>
+
+---
+
+### 4. **로그인**
+회원가입을 완료한 후 **2번(2. 로그안)** 을 눌러 로그인을 진행할 수 있습니다. 회원가입을 진행한 계정으로 로그인에 성공하면 다음과 같은 화면이 출력됩니다:
+<p align="center">
+    <img src="src/image_7.png" width="50%" height="50%">
+</p>
+
+---
+
+### 5. **권한 상승 요청**
+로그인에 성공한 후 이미지를 다운받아 보기 위해서는 권한을 상승해야 합니다. **3번(3. 권한 상승 요청)** 을 눌러 권한을 상승시키면 다음과 같은 화면이 출력됩니다:
+<p align="center">
+    <img src="src/image_8.png" width="50%" height="50%">
+</p>
+상승된 권한의 유효시간은 1시간입니다. 유효시간이 지났을 경우 권한을 다시 상승해야 이미지를 볼 수 있습니다.
+
+---
+
+### 6. **이미지 다운로드 요청**
+권한 상승에 성공했다면 최종적으로 이미지를 다운받아 볼 수 있습니다. **4번(4. 이미지 보기)** 을 누른 후 **이미지 url(image.jpg)** 을 입력합니다. 서버에서 이미지 다운로드에 성공하였다면 아래 이미지가 출력됩니다:
+<p align="center">
+    <img src="server/image.jpg" width="50%" height="50%">
+</p>
+다운로드된 이미지는 web_cash 디렉터리에 저장됩니다. 추후 이미지 보기를 다시 요청할 경우 web_cash에 이미지가 있는지 확인한 후 존재할 경우 web_cash에서 이미지를 가져옵니다.
 
 # server.py
-
-server.py는 `socket` 모듈을 사용하여 Python으로 구현된 간단한 HTTP 서버입니다. 사용자 등록, 로그인, 권한 상승, 이미지 다운로드 기능을 제공합니다.
 
 ## 기능
 - JSON 데이터베이스(`users.json`)를 사용한 사용자 등록 및 인증
@@ -147,7 +189,7 @@ $ python server.py 80
 ### 4. **핸들러 함수**
 
 #### **`register_handler(self, id: str, password: str) -> tuple`**
-- 사용자 등록 요청을 처리합니다.
+- 사용자 회원가입을 처리합니다.
 - **매개변수**:
   - `id`: 등록할 사용자 ID.
   - `password`: 등록할 사용자 비밀번호.
@@ -324,10 +366,7 @@ $ python server.py 80
 - `users.json` 파일이 존재하지 않는 경우, 서버가 요청을 처리할 때 자동으로 빈 JSON 파일을 생성합니다.
 - 보안 강화를 위해 이 구현에는 암호화가 포함되어 있지 않습니다. 실제 운영 환경에서는 HTTPS를 사용하는 것이 좋습니다.
 
-# HTTP Client
-
-client.py는 Python의 `socket` 모듈을 사용하여 서버와 통신하는 간단한 HTTP 클라이언트입니다.  
-회원가입, 로그인, 권한 상승, 이미지 조회 등의 기능을 제공합니다.
+# client.py
 
 ## 기능
 

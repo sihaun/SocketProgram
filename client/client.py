@@ -13,6 +13,8 @@ DNS = {
     "server": SERVER_IP,
     }
 
+MODE = None
+
 class Client(socket.socket):
     def __init__(self, host : str, port : int):
         socket.socket.__init__(self, socket.AF_INET, socket.SOCK_STREAM)
@@ -109,8 +111,9 @@ class Client(socket.socket):
         _response = ""
         if not bin_data:
             _response = self.recv(4096).decode()
-            print(f"_response : \n{_response}")
-        else: # 여기까지는 들어옴
+            if MODE == 'debug':
+                print(f"_response : \n{_response}")
+        else: 
             _b_response = b""
             while True:
                 chunk = self.recv(4 * 1024) # data를 chunk 조각으로 나누어 받음
@@ -158,7 +161,8 @@ class Client(socket.socket):
         request = self._create_request("POST", "/register", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
         response = self._response_handler()
-        print(response)
+        if MODE == 'debug':
+            print(response)
 
         if "REGISTER_SUCCESS" in response:
             self.load_cookies()
@@ -181,8 +185,9 @@ class Client(socket.socket):
         request = self._create_request("POST", "/login", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
         response = self._response_handler()
-        print(response)
-        print(f"Saved Cookie: {self.session_cookie}")
+        if MODE == 'debug':
+            print(response)
+            print(f"Saved Cookie: {self.session_cookie}")
 
         if "LOGIN_SUCCESS" in response:
             self.is_logined = True
@@ -205,7 +210,8 @@ class Client(socket.socket):
         request = self._create_request("PUT", "/privilege", headers=["Content-Type: application/json"], body=data)
         self._send_request(request)
         response = self._response_handler()
-        print(response)
+        if MODE == 'debug':
+            print(response)
 
         # 타임스탬프를 로컬 시간으로 변환
         local_time = time.localtime(self.session_cookie["key"]["expiry_time"])
@@ -213,7 +219,8 @@ class Client(socket.socket):
         formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
         if "PRIVILEGE_CHANGED" in response:
             print(f"권한 부여됨 expiry_time : {formatted_time}")
-            print(f"Saved Cookie: {self.session_cookie}\n")
+            if MODE == 'debug':
+                print(f"Saved Cookie: {self.session_cookie}\n")
         elif "PRIVILEGE_ALREADY_CHANGED" in response:
             print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
 
@@ -237,7 +244,8 @@ class Client(socket.socket):
         check_privilege = self._create_request("HEAD", "/images", headers=["Content-Type: application/json"], body=data)
         self._send_request(check_privilege)
         privilege_response = self._response_handler()
-        print(privilege_response)
+        if MODE == 'debug':
+            print(privilege_response)
 
         if "401 Unauthorized" in privilege_response:
             print("권한이 없습니다. 권한을 상승시켜 주세요.")
@@ -379,6 +387,7 @@ def main(host : str, port : int):
                 client.upgrade_privilege()
 
             elif client.is_logined and user_input == "4":
+                # 이미지 다운로드 요청
                 url = input("이미지 url을 입력하세요: ")
                 client.show_image(url)
 
