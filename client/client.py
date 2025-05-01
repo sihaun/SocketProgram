@@ -224,12 +224,12 @@ class Client(socket.socket):
         elif "PRIVILEGE_ALREADY_CHANGED" in response:
             print(f"이미 권한이 부여되었습니다 expiry_time : {formatted_time}")
 
-    def show_image(self, url : str) -> None:
+    def show_image(self) -> None:
         '''
         이미지 보여주기 요청. (HEAD /images) -> (GET /images)
 
-        input을 받아 해당 url의 이미지가 존재하는 지 확인 (HEAD /images)
-        이미지가 존재하면, (GET /images)로 이미지 정보를 binary 정보로 가져와 보여줌.
+        image를 보기 위해 id의 key가 유효한 지 확인인 (HEAD /images)
+        key가 유효하면, (GET /images)로 이미지 정보를 binary 정보로 가져와 보여줌.
 
         가져온 이미지는 web_cash에 저장됨.
         url을 확인한 후 먼저 web_cash에 해당 이미지가 존재하는 지 확인한 후 존재하면 가져옴
@@ -251,9 +251,10 @@ class Client(socket.socket):
             print("권한이 없습니다. 권한을 상승시켜 주세요.")
             return
         
-        # 200 OK
-        url_data = json.dumps({"url": url})
-        print(f"{url_data}")
+        elif "200 OK" in privilege_response: # 200 OK
+            url = input("이미지 url을 입력하세요: ")
+            url_data = json.dumps({"url": url})
+            print(f"{url_data}")
 
         if os.path.exists("web_cash/" + url): # web_cash
             print('open in web cash..')
@@ -261,17 +262,21 @@ class Client(socket.socket):
             image.show()
             return
         
-        request = self._create_request("GET", "/images", headers=["Content-Type: image/jpg"], body=url_data)
-        self._send_request(request)
-        (headers, image_data) = self._response_handler(bin_data=True)
+        else:
+            request = self._create_request("GET", "/images", headers=["Content-Type: image/jpg"], body=url_data)
+            self._send_request(request)
+            (headers, image_data) = self._response_handler(bin_data=True)
+            if MODE == 'debug':
+                print(headers)
 
-        if "200 OK" in headers:
-            image = Image.open(BytesIO(image_data))
-            image.show()
-            image.save("web_cash/" + url.split('.')[0] + ".jpg")
-
-        elif "Image not found" in headers:
-            print(f"이미지가 존재하지 않습니다. Image : {url}")
+            if "404 Not Found" in headers:
+                print(f"이미지가 존재하지 않습니다. Image : {url}")
+                
+                
+            elif "200 OK" in headers:
+                image = Image.open(BytesIO(image_data))
+                image.show()
+                image.save("web_cash/" + url.split('.')[0] + ".jpg")
 
     def _is_domain(self, host : str) -> bool:
         '''
@@ -390,8 +395,7 @@ def main(host : str, port : int):
 
             elif client.is_logined and user_input == "4":
                 # 이미지 다운로드 요청
-                url = input("이미지 url을 입력하세요: ")
-                client.show_image(url)
+                client.show_image()
 
             elif user_input == "99":
                 print("클라이언트를 종료합니다.")

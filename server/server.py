@@ -135,8 +135,12 @@ class Server(socket.socket):
                 id = data["username"]
                 if not id:
                     return self._create_response_str("400 Bad Request", body="Missing username")
-                valid = self._is_valid_key(id)
-                return self._create_response_str("200 OK") if valid else self._create_response_str("401 Unauthorized") # check key
+                
+                valid = self._is_valid_key(id) 
+                if valid: # check
+                    return self._create_response_str("200 OK", body="Valid key")
+                else:
+                    return self._create_response_str("401 Unauthorized", body="Invalid Key")
             
             elif method == "GET":
                 '''
