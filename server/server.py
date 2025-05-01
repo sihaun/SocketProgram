@@ -19,7 +19,7 @@ class Server(socket.socket):
 
         self.default_key = "0" # register시 주어지는 기본 키
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback): # 서버 종료
         if exc_type:
             self.log_message(f"An exception occurred: {exc_value}")
         self.log_message("Server closed")
@@ -204,7 +204,7 @@ class Server(socket.socket):
         
         # 키 발급
         users.get(id)["key"]["value"] = "ABCD"
-        users.get(id)["key"]["expiry_time"] = time.time() + 3600
+        users.get(id)["key"]["expiry_time"] = time.time() + 3600 # 유효시간 : 1시간
         self.save_users(users)
 
         headers = [f"Set-Cookie: key=ABCD; Max-Age=3600"]

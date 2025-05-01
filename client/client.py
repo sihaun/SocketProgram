@@ -255,8 +255,10 @@ class Client(socket.socket):
         url_data = json.dumps({"url": url})
         print(f"{url_data}")
 
-        if os.path.exists("web_cash/" + url_data): # web_cash
-            image = Image.open("web_cash/" + url_data)
+        if os.path.exists("web_cash/" + url): # web_cash
+            print('open in web cash..')
+            image = Image.open("web_cash/" + url)
+            image.show()
             return
         
         request = self._create_request("GET", "/images", headers=["Content-Type: image/jpg"], body=url_data)
@@ -266,7 +268,7 @@ class Client(socket.socket):
         if "200 OK" in headers:
             image = Image.open(BytesIO(image_data))
             image.show()
-            image.save("web_cash/downloaded_image.jpg")
+            image.save("web_cash/" + url.split('.')[0] + ".jpg")
 
         elif "Image not found" in headers:
             print(f"이미지가 존재하지 않습니다. Image : {url}")

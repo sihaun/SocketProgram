@@ -1,15 +1,14 @@
 # *SocketProgram*
-server.py는 `socket` 모듈을 사용하여 Python으로 구현된 간단한 HTTP 서버입니다. 사용자 등록, 로그인, 권한 상승, 이미지 다운로드 기능을 제공합니다.
+*SocketProgram*은 `socket` 모듈을 사용하여 Python으로 구현된 간단한 HTTP 서버와 클라이언트 프로그램입니다. 사용자 등록, 로그인, 권한 상승, 이미지 다운로드 기능을 제공합니다.
 ## 요구 사항
 
 - Python 3.x
 - `pillow` 라이브러리 (이미지 처리용)
 
 ## 설치
-이 저장소를 클론하고 프로젝트 디렉토리로 이동하세요:
+프로젝트 디렉터리로 이동한 후 pillow 라이브러리를 설치해주세요:
 
 ```sh
-$ git clone https://github.com/sihaun/SocketProgram.git
 $ cd SocketProgram
 $ pip install pillow
 ```
@@ -107,21 +106,6 @@ server.py를 실행한 shell에서도 다음과 같은 출력이 나오면 정�
 - 이미지 파일 검색 및 다운로드
 - 멀티스레드 클라이언트 처리
 
-## 사용법
-포트 번호를 지정하여 서버를 실행하세요:
-
-```sh
-$ python server.py <port>
-```
-
-예시:
-
-```sh
-$ python server.py 80
-```
-
-이렇게 하면 서버가 `80` 포트에서 시작되며, 클라이언트의 요청을 대기합니다.
-
 ## 주요 클래스 및 함수
 
 ### 1. **`Server` 클래스**
@@ -147,7 +131,7 @@ $ python server.py 80
 ### 2. **HTTP 응답 생성 함수**
 
 #### **`_create_response_str(self, status: str, headers: list = None, body: str = None) -> tuple`**
-- 문자열 기반 HTTP 응답을 생성합니다.
+- 문자열 기반 HTTP 응답을 생성합니다. 대부분의 응답은 이 함수를 통하여 생성됩니다.
 - **매개변수**:
   - `status`: HTTP 상태 코드.
   - `headers`: 응답 헤더 리스트.
@@ -155,7 +139,7 @@ $ python server.py 80
 - **반환값**: `(response, None)` 형태의 튜플.
 
 #### **`_create_response_byte(self, status: str, headers: list, body: bytes) -> tuple`**
-- 바이트 기반 HTTP 응답을 생성합니다.
+- 바이트 기반 HTTP 응답을 생성합니다. 이미지 데이터 전송을 위해 사용됩니다.
 - **매개변수**:
   - `status`: HTTP 상태 코드.
   - `headers`: 응답 헤더 리스트.
@@ -327,21 +311,7 @@ $ python server.py 80
 - `200 OK`: 권한 상승 완료, 키 발급됨
 - `409 Conflict`: 이미 권한 상승됨
 
-### 4. 이미지 다운로드
-**엔드포인트:** `POST /images`
-
-**요청:**
-```json
-{
-  "url": "이미지_파일_경로"
-}
-```
-
-**응답:**
-- `200 OK`: 바이너리 파일로 이미지 반환
-- `404 Not Found`: 이미지 파일 없음
-
-### 5. 이미지 키 유효성 검사
+### 4. 이미지 키 유효성 검사
 **엔드포인트:** `HEAD /images`
 
 **요청:**
@@ -355,6 +325,20 @@ $ python server.py 80
 - `200 OK`: 키가 유효함
 - `401 Unauthorized`: 키가 유효하지 않거나 만료됨
 
+### 5. 이미지 다운로드
+**엔드포인트:** `POST /images`
+
+**요청:**
+```json
+{
+  "url": "이미지_파일_경로"
+}
+```
+
+**응답:**
+- `200 OK`: 바이너리 파일로 이미지 반환
+- `404 Not Found`: 이미지 파일 없음
+
 ## 서버 설계
 - 서버는 지정된 포트에서 요청을 대기하며, 클라이언트의 연결을 수락합니다.
 - 각 클라이언트 요청은 별도의 스레드에서 처리되어 다중 접속을 지원합니다.
@@ -364,7 +348,7 @@ $ python server.py 80
 
 ## 주의 사항
 - `users.json` 파일이 존재하지 않는 경우, 서버가 요청을 처리할 때 자동으로 빈 JSON 파일을 생성합니다.
-- `cookies.json` 파일은 클라이언트 연결이 해제된 이후 업데이트됩니다.
+- `users.json` 파일을 초기화할 경우 `{}` 상태로 초기화해야 합니다. `{}` 가 존재하지 않을 경우 오류가 출력됩니다.
 
 # client.py
 
@@ -375,20 +359,6 @@ $ python server.py 80
 - 로그인 후 권한 상승 요청 가능
 - 권한 상승 후 이미지 조회 가능
 - 쿠키를 이용한 인증 유지
-
-## 사용법
-
-클라이언트를 실행하려면 서버의 IP와 포트를 지정하여 실행합니다.
-
-```sh
-$ python client.py <server_ip> <port>
-```
-
-예제:
-
-```sh
-$ python client.py 127.0.0.1 80
-```
 
 ## 주요 클래스 및 함수
 
